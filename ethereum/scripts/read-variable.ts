@@ -76,12 +76,13 @@ async function readEnum(slot: BigNumber, shift: number, bytes: number, address: 
   return await readNumber(slot, shift, "uint" + bytes * 8, address);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let types: any;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function readPrimitive(slot: BigNumber, shift: number, address: string, type: string): Promise<any> {
-  if (type.substr(0, 5) === "t_int" || type.substr(0, 6) === "t_uint") {
+type PrimitiveValue = string | boolean;
+type RecordValue = Record<string, Value>;
+type ArrayValue = Value[];
+type Value = PrimitiveValue | RecordValue | Value[];
+async function readPrimitive(slot: BigNumber, shift: number, address: string, type: string): Promise<PrimitiveValue> {
+  if (type.startsWith("t_int") || type.startsWith("t_uint")) {
     return readNumber(slot, shift, types[type].label, address);
   }
   if (type === "t_bool") {
@@ -93,19 +94,19 @@ async function readPrimitive(slot: BigNumber, shift: number, address: string, ty
   if (type === "t_bytes_storage") {
     return readDynamicBytes(slot, address);
   }
-  if (type.substr(0, 7) === "t_bytes") {
+  if (type.startsWith("t_bytes")) {
     return readBytes(slot, shift, types[type].numberOfBytes, address);
   }
   if (type === "t_string_storage") {
     return readString(slot, address);
   }
-  if (type.substr(0, 6) === "t_enum") {
+  if (type.startsWith("t_enum")) {
     return readEnum(slot, shift, types[type].numberOfBytes, address);
   }
 }
 
 // Read user defined struct
-async function readStruct(slot: BigNumber, address: string, type: string): Promise<object> {
+async function readStruct(slot: BigNumber, address: string, type: string): Promise<Record<string, Value>> {
   const result = {};
   const data = new Map();
   types[type].members.forEach((member) => {
@@ -121,8 +122,7 @@ async function readStruct(slot: BigNumber, address: string, type: string): Promi
 }
 
 // Read array (Static or dynamic sized)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function readArray(slot: BigNumber, address: string, type: string): Promise<any[]> {
+async function readArray(slot: BigNumber, address: string, type: string): Promise<Value[]> {
   let length: number;
   const baseType = types[type].base;
   if (types[type].encoding === "dynamic_array") {
@@ -153,15 +153,13 @@ async function readArray(slot: BigNumber, address: string, type: string): Promis
 }
 
 // Read any type, except mapping (it needs key for reading)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function readVariable(slot: BigNumber, shift: number, address: string, type: string): Promise<any> {
-  if (type.substr(0, 7) === "t_array") return readArray(slot, address, type);
-  if (type.substr(0, 8) === "t_struct") return readStruct(slot, address, type);
+async function readVariable(slot: BigNumber, shift: number, address: string, type: string) {
+  if (type.startsWith("t_array")) return readArray(slot, address, type);
+  if (type.startsWith("t_struct")) return readStruct(slot, address, type);
   return readPrimitive(slot, shift, address, type);
 }
 
 // Read field of struct
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function readPartOfStruct(slot: BigNumber, address: string, type: string, params: string[]): Promise<any> {
   const last = params.pop();
   const member = types[type].members.find((element) => {
@@ -172,7 +170,6 @@ async function readPartOfStruct(slot: BigNumber, address: string, type: string, 
 }
 
 // Read array element by index
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function readPartOfArray(slot: BigNumber, address: string, type: string, params: string[]): Promise<any> {
   const index = +params.pop();
   const baseType = types[type].base;
@@ -221,7 +218,6 @@ function encodeKey(key: string, type: string): string {
 }
 
 // Read mapping element by key
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function readPartOfMap(slot: BigNumber, address: string, type: string, params: string[]): Promise<any> {
   const key = params.pop();
   const valueType = types[type].value;
@@ -240,7 +236,6 @@ async function readPartOfVariable(
   address: string,
   type: string,
   params: string[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
   if (params.length === 0) {
     return readVariable(slot, shift, address, type);
@@ -318,7 +313,6 @@ function getVariableName(fullName: string): string {
   return variableName;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getValue(address: string, contractName: string, name: string): Promise<any> {
   // Mapping from Contract name to fully qualified name known to hardhat
   // e.g ZkSync => cache/solpp-generated-contracts/interfaces/IZkSync.sol
@@ -343,7 +337,7 @@ async function getValue(address: string, contractName: string, name: string): Pr
 
   const variableName = getVariableName(name);
   const params = parseName(name);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let variable: any;
 
   storage.forEach((node) => {
